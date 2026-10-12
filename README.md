@@ -32,6 +32,10 @@ Personal bots for [Paseo](https://paseo.sh), like Grok Bot or Hermes Bots. Give 
 
 ## Install
 
+This fork also supports private Telegram conversations in a bot's persistent
+workspace. See [Telegram setup](docs/telegram.md) for token provisioning,
+allowlists, commands and restart behavior.
+
 ```bash
 paseo plugin install npm:@oliexe/paseo-bots
 ```

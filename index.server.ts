@@ -17,6 +17,8 @@ import { Relay } from "./server/relay";
 import { acceptProposal, dismissProposal, getProposal } from "./server/proposals";
 import { BOT_TOOLS } from "./server/tools";
 import { saveUpload } from "./server/uploads";
+import { TelegramService } from "./server/telegram/service";
+import { TELEGRAM_LABEL } from "./server/telegram/runtime";
 import { botSettings, EMPTY_LIBRARY } from "./shared/bot";
 import { shellCommand } from "./shared/commands";
 import {
@@ -87,6 +89,7 @@ export default function contribute(server: PluginServerContext) {
   const relay = new Relay(host, BOT_TOOLS);
   void relay.start().catch((error: unknown) => console.error("paseo-bots: couldn't start the relay", error));
   const scheduler = new RoutineScheduler(host, relay);
+  const telegram = new TelegramService(host, relay);
   const journal = new MemoryJournal();
   const commands = new CommandAllowlist();
   // Every handler and hook receives the plugin's Paseo API; features that start chats need it.
@@ -170,10 +173,11 @@ export default function contribute(server: PluginServerContext) {
   // A bot's saved commands (exact command, exact folder) are approved here instead of asking.
   server.on("agent.permission_requested", async ({ agent, request }, context) => {
     host.attach(context.paseo);
+    telegram.permission({ agent, request });
     const shell = shellCommand(request, agent.cwd);
     if (!shell) return;
     const chat = await host.chatOf(agent.id);
-    if (!chat || !(await commands.matches(chat.botId, shell.command, shell.cwd))) return;
+    if (!chat || chat.labels[TELEGRAM_LABEL] === "true" || !(await commands.matches(chat.botId, shell.command, shell.cwd))) return;
     await context.paseo.agents
       .ref(agent.id)
       .respondToPermission({ requestId: request.id, response: { behavior: "allow" } })
@@ -181,10 +185,12 @@ export default function contribute(server: PluginServerContext) {
   });
   server.on("agent.turn_ended", async (event, context) => {
     host.attach(context.paseo);
+    telegram.finished(event);
     await turnEnded(host, journal, scheduler, event).catch((error: unknown) => console.error("paseo-bots: couldn't record a turn", error));
   });
 
-  return () => {
+  return async () => {
+    await telegram.stop();
     scheduler.stop();
     relay.stop();
   };
